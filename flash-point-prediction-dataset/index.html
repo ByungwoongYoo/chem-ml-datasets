@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>A flash point prediction dataset you can actually train on</title>
+<meta name="description" content="Open experimental flash points for 8,470 organic compounds: where the data comes from, open-cup vs closed-cup noise, silanes and metal-organics, and baseline errors in degrees C.">
+<link rel="canonical" href="https://byungwoongyoo.github.io/chem-ml-datasets/flash-point-prediction-dataset/">
+<meta property="og:title" content="A flash point prediction dataset you can actually train on"><meta property="og:description" content="Open experimental flash points for 8,470 organic compounds: where the data comes from, open-cup vs closed-cup noise, silanes and metal-organics, and baseline errors in degrees C.">
+<meta property="og:type" content="article"><meta property="og:url" content="https://byungwoongyoo.github.io/chem-ml-datasets/flash-point-prediction-dataset/">
+<link rel="stylesheet" href="../style.css">
+</head><body>
+<header><a href="../">ML-ready chemistry datasets: notes</a></header>
+<main><article><h1>A flash point prediction dataset you can actually train on</h1><p class=meta>2026-10-31</p><p>Flash point matters for shipping classification, solvent selection and process safety, but clean, open, machine-readable measurements are hard to find. Most QSPR papers use datasets of a few hundred to a couple of thousand compounds; the data are often behind a paywall or in a PDF table.</p>
+<p>The best open starting point I know of is the integrated dataset released with Sun et al.'s 2020 paper on graph neural networks for flash point. We checked it for duplicate structures and conflicting measurements, then evaluated a simple baseline model.</p>
+<h2>The source</h2>
+<p>Sun X, Krakauer NJ, Politowicz A, et al. <em>Assessing Graph-based Deep Learning Models for Predicting Flash Point</em>. Molecular Informatics 2020, 39, 1900101, doi:<a href="https://doi.org/10.1002/minf.201900101">10.1002/minf.201900101</a>.</p>
+<p>Data: Sun et al., <em>Data for Assessing Graph-based Deep Learning Models for Predicting Flash Point</em>, figshare, doi:<a href="https://doi.org/10.6084/m9.figshare.9275210">10.6084/m9.figshare.9275210</a>. License: CC BY 4.0.</p>
+<p>The figshare record has one data file, <code>integrated_dataset_public.csv</code>, with 14,696 rows, each with a SMILES string, a flash point and a source tag. The rest of the record is model outputs from the paper.</p>
+<h2>What is in the raw file</h2>
+<p>The file combines earlier literature datasets with catalog data. By source tag: le15 (8,843 rows), pubchem (1,741), carroll11 (937), katritzky07 (739), "hazardous materials" (364), and smaller sets such as carroll10, mathieu14, patel10, chen14, mathieu12, wang11 and pan13. There are also small Gelest catalog subsets for metal-organics, silanes, tin and germanium compounds.</p>
+<p>That has a few consequences.</p>
+<h2>Pitfalls</h2>
+<h3>The same compound appears many times</h3>
+<p>14,696 rows collapse to 8,481 unique canonical SMILES. Because the sub-datasets overlap, a random row-level split will put the same molecule in train and test, which inflates your score. Aggregate by structure first.</p>
+<h3>Sources disagree</h3>
+<p>After aggregation, 649 compounds have values that differ by more than 10 K across sources. Some of that is real measurement spread; some of it is almost certainly open-cup versus closed-cup methods, which typically give different numbers for the same liquid. The public CSV does not label the method per row, so you cannot separate them. A flag lets you at least see whether these compounds dominate your errors.</p>
+<h3>Not everything is a plain organic</h3>
+<p>Silanes, metal-organics, tin compounds and acids are in there (the source CSV marks them with <code>is_*</code> columns). If your target is ordinary organic solvents, you probably want to filter them out. If you keep them, expect poor extrapolation from a model trained mostly on C/H/N/O compounds.</p>
+<h3>Temperature units</h3>
+<p>The source CSV reports <code>flashpoint</code> in kelvin; a value such as 350.15 is in K, not °C. Convert once (°C = K − 273.15) and keep both, so nobody downstream subtracts twice.</p>
+<h3>The scaffold split is skewed</h3>
+<p>About 40% of the compounds are acyclic and share the empty scaffold, so a scaffold split puts them all in train. The scaffold test set ends up with a mean of 170.2 °C versus 106.7 °C for the random test set. That makes it more of an extrapolation test than a "new chemistry" test. The cluster split is the fairer check.</p>
+<h2>How we cleaned it</h2>
+<ol>
+<li>Canonicalize SMILES with RDKit (largest fragment, uncharged). 14,696 rows → 8,481 unique structures; 3 failed re-parsing.</li>
+<li>Drop 8 inorganic or tiny species (we keep compounds with carbon and at least 2 heavy atoms): 8,470 compounds.</li>
+<li>Take the median flash point in Kelvin per compound, add Celsius, <code>n_values</code>, <code>n_sources</code>, the range and the main source tag.</li>
+<li>Flag the 649 compounds with more than 10 K disagreement.</li>
+<li>Carry over the source's <code>is_silicon</code>, <code>is_metallic</code>, <code>is_tin</code> and <code>is_acid</code> flags so you can filter.</li>
+<li>Add random, Bemis–Murcko scaffold and Butina cluster (Morgan r2, Tanimoto ≥ 0.4) splits, about 80/10/10.</li>
+</ol>
+<h2>Baselines</h2>
+<p>Random Forest, 300 trees, test set, °C. From <code>stats.json</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Split</th>
+<th>Features</th>
+<th>RMSE</th>
+<th>MAE</th>
+<th>R²</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>random</td>
+<td>RDKit descriptors</td>
+<td>33.3</td>
+<td>18.5</td>
+<td>0.799</td>
+</tr>
+<tr>
+<td>random</td>
+<td>Morgan 2048</td>
+<td>41.4</td>
+<td>28.5</td>
+<td>0.688</td>
+</tr>
+<tr>
+<td>cluster</td>
+<td>RDKit descriptors</td>
+<td>32.5</td>
+<td>18.1</td>
+<td>0.816</td>
+</tr>
+<tr>
+<td>cluster</td>
+<td>Morgan 2048</td>
+<td>42.0</td>
+<td>30.4</td>
+<td>0.692</td>
+</tr>
+<tr>
+<td>scaffold</td>
+<td>RDKit descriptors</td>
+<td>53.7</td>
+<td>36.0</td>
+<td>0.554</td>
+</tr>
+<tr>
+<td>scaffold</td>
+<td>Morgan 2048</td>
+<td>88.3</td>
+<td>70.4</td>
+<td>−0.204</td>
+</tr>
+</tbody>
+</table>
+<p>Predicting the training-set mean: RMSE 74.2 (random), 76.2 (cluster), 111.9 (scaffold).</p>
+<p>The Morgan model on the scaffold split still beats the training-set mean (RMSE 88.3 vs 111.9), but its R² is negative: it does worse than a constant equal to the test-set mean. This happens when the test set has a different target distribution and the features cannot extrapolate. Descriptors (which include things like molecular weight and polarity terms that correlate with volatility) hold up much better.</p>
+<h2>Quick start with the free preview</h2>
+<pre><code class="language-python">import numpy as np, pandas as pd
+from rdkit import Chem
+from rdkit.Chem import Descriptors
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_absolute_error
+
+url = (&quot;https://huggingface.co/datasets/woongworks/flashpoint-ml-ready-preview&quot;
+       &quot;/resolve/main/flashpoint_preview_150.csv&quot;)
+df = pd.read_csv(url)
+
+# plain organics only, no flagged disagreements
+df = df[~(df.is_silicon | df.is_metallic | df.is_tin) &amp; ~df.disagreement_flag]
+
+X = np.nan_to_num(np.array([[fn(Chem.MolFromSmiles(s)) for _, fn in Descriptors.descList]
+                            for s in df.smiles]), posinf=0, neginf=0)
+tr, te = (df.cluster_split == &quot;train&quot;).values, (df.cluster_split == &quot;test&quot;).values
+rf = RandomForestRegressor(n_estimators=300, random_state=0).fit(X[tr], df.fp_C[tr])
+print(&quot;test MAE (deg C):&quot;, mean_absolute_error(df.fp_C[te], rf.predict(X[te])))
+</code></pre>
+<p>On 150 rows the test set is tiny, so treat the printed number as a smoke test only.</p>
+<h2>Limits</h2>
+<ul>
+<li>Open-cup and closed-cup values are mixed and not labeled.</li>
+<li>Literature and catalog values, not re-measured.</li>
+<li>The paper mentions DIPPR and handbooks as upstream inputs to the integrated set; this pack only uses the CC BY 4.0 CSV the authors released on figshare.</li>
+</ul>
+<h2>Get the data</h2>
+<ul>
+<li>Free preview (150 rows): <a href="https://huggingface.co/datasets/woongworks/flashpoint-ml-ready-preview">huggingface.co/datasets/woongworks/flashpoint-ml-ready-preview</a></li>
+<li>Full pack ($7): all 8,470 compounds, the 14,696-row long file with source tags, <code>stats.json</code> and <code>build.py</code>: <a href="https://yoonge.gumroad.com/l/flashpoint-ml-ready?utm_source=blog&amp;utm_medium=seo&amp;utm_campaign=flash-point-dataset">yoonge.gumroad.com/l/flashpoint-ml-ready</a></li>
+</ul>
+<p>CC BY 4.0, derived from Sun et al. Please cite both the paper and the figshare record. The original CSV remains free on figshare; the pack provides cleaned data and fixed splits for comparing models.</p><h2>Related notes</h2><ul><li><a href="../henrys-law-constant-dataset-machine-learning/">Henry&#x27;s law constant dataset for machine learning: cleaning Sander&#x27;s compilation</a></li><li><a href="../logp-dataset-smiles-download/">Where to download a logP dataset with SMILES (and what to check before you train on it)</a></li><li><a href="../melting-point-dataset-for-machine-learning/">A melting point dataset for machine learning: what&#x27;s in the Bradley set and how to clean it</a></li><li><a href="../scaffold-split-vs-random-split-chemistry/">Scaffold split vs random split in chemistry ML: the same model on 13 datasets</a></li><li><a href="../solubility-in-organic-solvents-dataset/">Solubility in organic solvents: an ML dataset and the limits of random splits</a></li></ul></article></main>
+<footer><p>Free 150-row previews: <a href="https://huggingface.co/woongworks">huggingface.co/woongworks</a> ·
+Full packs: <a href="https://yoonge.gumroad.com/?utm_source=blog&amp;utm_medium=seo&amp;utm_campaign=footer">yoonge.gumroad.com</a> ·
+Byungwoong Yoo (woongworks)</p></footer>
+</body></html>

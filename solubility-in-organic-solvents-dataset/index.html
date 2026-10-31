@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Solubility in organic solvents: an ML dataset and the limits of random splits</title>
+<meta name="description" content="Open solute-solvent solubility data for 174 organic solvents from the Open Notebook Science Challenge, how to clean it, and how much of random-split accuracy is just solute memorisation.">
+<link rel="canonical" href="https://byungwoongyoo.github.io/chem-ml-datasets/solubility-in-organic-solvents-dataset/">
+<meta property="og:title" content="Solubility in organic solvents: an ML dataset and the limits of random splits"><meta property="og:description" content="Open solute-solvent solubility data for 174 organic solvents from the Open Notebook Science Challenge, how to clean it, and how much of random-split accuracy is just solute memorisation.">
+<meta property="og:type" content="article"><meta property="og:url" content="https://byungwoongyoo.github.io/chem-ml-datasets/solubility-in-organic-solvents-dataset/">
+<link rel="stylesheet" href="../style.css">
+</head><body>
+<header><a href="../">ML-ready chemistry datasets: notes</a></header>
+<main><article><h1>Solubility in organic solvents: an ML dataset and the limits of random splits</h1><p class=meta>2026-10-31</p><p>There are plenty of public datasets for aqueous solubility. Far fewer cover solubility in organic solvents, which is needed for crystallisation, formulation and choosing reaction solvents. The largest open collection I know of with measured values across many solvents is the Open Notebook Science (ONS) Challenge solubility dataset that Jean-Claude Bradley and colleagues collected.</p>
+<p>This post covers what is in it, how to clean it for machine learning, and one problem that is specific to solute–solvent data: the way you split it changes the result more than the model does.</p>
+<h2>The source</h2>
+<p>Bradley J-C, Guha R, Hooker B, Koch SJ, Lang A, Neylon C, Williams AJ. <em>Open Notebook Science Challenge Solubility Dataset</em>. figshare (2015), doi:<a href="https://doi.org/10.6084/m9.figshare.1514952">10.6084/m9.figshare.1514952</a>. License: CC BY 4.0.</p>
+<p>It has 9,730 rows. Each row records a solute, a solvent and a concentration, along with a citation to a paper, notebook page or supplier table. Part of it was measured by students and volunteers in an open notebook; part was gathered from the literature.</p>
+<h2>What to remove, and why</h2>
+<p>The raw file mixes several things you probably do not want in one model:</p>
+<ul>
+<li>Water and water mixtures (4,632 rows). Almost half the file. If you want an organic-solvent model, take them out; aqueous solubility behaves differently and has better dedicated datasets.</li>
+<li>"DONOTUSE" rows (91). Marked by the curators. Easy to miss.</li>
+<li>PEG400 as a solvent (98 rows). It is a polymer, so one SMILES cannot describe it.</li>
+<li>Solutes that react with the solvent (16). These entries do not represent solubility measurements.</li>
+<li>Liquid solutes (74). We kept solid solutes only, so every value is the saturation concentration of a solid.</li>
+<li>Missing or non-positive concentrations (61) and temperatures stated outside 20–30 °C (24).</li>
+<li>Unparsable SMILES (69).</li>
+</ul>
+<p>That leaves 4,665 measurements. Merging repeats of the same solute–solvent pair (median of log10 mol/L) gives 3,776 pairs: 591 solutes in 174 solvents. 34 pairs have repeats that disagree by more than 0.5 log units; they are flagged.</p>
+<p>Most pairs (3,310 of 3,776) come from a single source. Temperature is "about room temperature" and often not stated. Large polycyclic aromatics are over-represented (anthracene alone has 86 pairs, pyrene 75). The most common solvents are 1-octanol (262 pairs), methanol (245), ethanol (229), acetonitrile (142) and DMSO (133). And 93 DMSO rows come from a solvent supplier's table rather than a peer-reviewed paper; the long file keeps the citation so you can filter by it.</p>
+<h2>The split problem</h2>
+<p>With solute–solvent pairs, a random split puts the same solute in train and test, just dissolved in a different solvent. Solubility of one compound across solvents is strongly correlated, so the model can do well by remembering the solute.</p>
+<p>To see how much that matters, we built three splits:</p>
+<ul>
+<li><code>random_split</code>: by pair.</li>
+<li><code>scaffold_split</code>: by the solute's Bemis–Murcko scaffold, so no solute appears in more than one split.</li>
+<li><code>cluster_split</code>: by Butina clusters of solutes (Morgan r2, Tanimoto ≥ 0.4).</li>
+</ul>
+<h2>Baselines</h2>
+<p>Random Forest, 300 trees, test set, logS in log10 mol/L. Solvents are described with RDKit descriptors in both models. From <code>stats.json</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Split</th>
+<th>Solute Morgan + solvent desc.</th>
+<th>Solute desc. + solvent desc.</th>
+<th>Mean baseline RMSE</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>random</td>
+<td>R² 0.743, RMSE 0.478</td>
+<td>R² 0.767, RMSE 0.455</td>
+<td>0.944</td>
+</tr>
+<tr>
+<td>scaffold</td>
+<td>R² 0.091, RMSE 1.042</td>
+<td>R² 0.261, RMSE 0.939</td>
+<td>1.186</td>
+</tr>
+<tr>
+<td>cluster</td>
+<td>R² 0.207, RMSE 0.624</td>
+<td>R² 0.173, RMSE 0.637</td>
+<td>0.799</td>
+</tr>
+</tbody>
+</table>
+<p>R² drops from about 0.75 to about 0.2 once the model has to predict solutes it has not seen. Most of the "accuracy" on the random split is solute memorisation. If you are building a model to rank solvents for a known compound, the random split is roughly your use case. For new compounds, the scaffold and cluster results are more relevant and show substantial room for improvement.</p>
+<h2>Try it</h2>
+<pre><code class="language-python">import numpy as np, pandas as pd
+from rdkit import Chem
+from rdkit.Chem import Descriptors
+
+url = (&quot;https://huggingface.co/datasets/woongworks/ons-nonaq-solubility-ml-ready-preview&quot;
+       &quot;/resolve/main/ons_nonaq_preview_150.csv&quot;)
+df = pd.read_csv(url)
+
+def desc(smi):
+    m = Chem.MolFromSmiles(smi)
+    return [fn(m) for _, fn in Descriptors.descList]
+
+# featurize each unique molecule once, then join solute + solvent vectors
+cache = {s: desc(s) for s in set(df.solute_smiles) | set(df.solvent_smiles)}
+X = np.nan_to_num(np.array([cache[a] + cache[b]
+                            for a, b in zip(df.solute_smiles, df.solvent_smiles)]),
+                  posinf=0, neginf=0)
+y = df.logS_M.values
+
+# how many test solutes also appear in train? (leakage check)
+for split in [&quot;random_split&quot;, &quot;scaffold_split&quot;]:
+    tr = set(df.solute_smiles[df[split] == &quot;train&quot;])
+    te = set(df.solute_smiles[df[split] == &quot;test&quot;])
+    print(split, &quot;test solutes seen in train:&quot;, len(te &amp; tr), &quot;/&quot;, len(te))
+</code></pre>
+<p>The final loop counts how many test solutes also appear in the training set. Run this check before interpreting results from a solute–solvent dataset.</p>
+<h2>Limits</h2>
+<ul>
+<li>Mostly single-source pairs; values were not re-measured.</li>
+<li>Room temperature only, often not stated exactly.</li>
+<li>Coverage is uneven: a few solutes and solvents dominate.</li>
+</ul>
+<h2>Get the data</h2>
+<ul>
+<li>Free preview (150 pairs): <a href="https://huggingface.co/datasets/woongworks/ons-nonaq-solubility-ml-ready-preview">huggingface.co/datasets/woongworks/ons-nonaq-solubility-ml-ready-preview</a></li>
+<li>Full pack ($7): all 3,776 pairs, the 4,665-row long file with citations and DOIs, <code>stats.json</code> and <code>build.py</code>: <a href="https://yoonge.gumroad.com/l/ons-nonaq-solubility-ml-ready?utm_source=blog&amp;utm_medium=seo&amp;utm_campaign=organic-solvent-solubility">yoonge.gumroad.com/l/ons-nonaq-solubility-ml-ready</a></li>
+</ul>
+<p>CC BY 4.0, derived from Bradley et al. (2015); please cite them. Changes: filtered, standardized, aggregated, split and benchmarked as described above. The original dataset stays free on figshare.</p><h2>Related notes</h2><ul><li><a href="../flash-point-prediction-dataset/">A flash point prediction dataset you can actually train on</a></li><li><a href="../henrys-law-constant-dataset-machine-learning/">Henry&#x27;s law constant dataset for machine learning: cleaning Sander&#x27;s compilation</a></li><li><a href="../logp-dataset-smiles-download/">Where to download a logP dataset with SMILES (and what to check before you train on it)</a></li><li><a href="../melting-point-dataset-for-machine-learning/">A melting point dataset for machine learning: what&#x27;s in the Bradley set and how to clean it</a></li><li><a href="../scaffold-split-vs-random-split-chemistry/">Scaffold split vs random split in chemistry ML: the same model on 13 datasets</a></li></ul></article></main>
+<footer><p>Free 150-row previews: <a href="https://huggingface.co/woongworks">huggingface.co/woongworks</a> ·
+Full packs: <a href="https://yoonge.gumroad.com/?utm_source=blog&amp;utm_medium=seo&amp;utm_campaign=footer">yoonge.gumroad.com</a> ·
+Byungwoong Yoo (woongworks)</p></footer>
+</body></html>

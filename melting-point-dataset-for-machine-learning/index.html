@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>A melting point dataset for machine learning: what&#x27;s in the Bradley set and how to clean it</title>
+<meta name="description" content="Where to get open experimental melting point data with SMILES, the traps in the raw Bradley file, and baseline numbers on random, scaffold and cluster splits.">
+<link rel="canonical" href="https://byungwoongyoo.github.io/chem-ml-datasets/melting-point-dataset-for-machine-learning/">
+<meta property="og:title" content="A melting point dataset for machine learning: what&#x27;s in the Bradley set and how to clean it"><meta property="og:description" content="Where to get open experimental melting point data with SMILES, the traps in the raw Bradley file, and baseline numbers on random, scaffold and cluster splits.">
+<meta property="og:type" content="article"><meta property="og:url" content="https://byungwoongyoo.github.io/chem-ml-datasets/melting-point-dataset-for-machine-learning/">
+<link rel="stylesheet" href="../style.css">
+</head><body>
+<header><a href="../">ML-ready chemistry datasets: notes</a></header>
+<main><article><h1>A melting point dataset for machine learning: what&#x27;s in the Bradley set and how to clean it</h1><p class=meta>2026-10-31</p><p>If you search for a melting point dataset for machine learning, you mostly end up in one of two places: a paper's supplementary file with a few hundred compounds, or the Jean-Claude Bradley Open Melting Point Dataset. The Bradley set is a useful starting point. It is large, it has SMILES, and it is released as CC0, so you can use it for anything. The raw file needs cleaning before you load it into a model and call <code>fit()</code>.</p>
+<p>We describe the source, the problems in the raw file and the cleaning steps, then report Random Forest results as a baseline for comparison.</p>
+<h2>The source</h2>
+<p>Bradley, Williams and Lang, <em>Jean-Claude Bradley Open Melting Point Dataset</em>, figshare (2014), doi:<a href="https://doi.org/10.6084/m9.figshare.1031637">10.6084/m9.figshare.1031637</a>. License: CC0 1.0.</p>
+<p>It pulls values from several places: PHYSPROP, the Alfa Aesar catalog, handbooks and papers. Combining these sources gives the dataset its size, but also leaves inconsistencies to resolve. The file we started from has 28,645 rows.</p>
+<h2>Pitfalls in the raw file</h2>
+<h3>Repeated measurements</h3>
+<p>Many compounds appear several times with different values from different sources. If you keep every row and split randomly, the same molecule can sit in train and test, and your test error looks better than it should.</p>
+<h3>Curator "do not use" flags</h3>
+<p>The dataset flags 377 rows as unreliable; those flags are easy to miss if you only read the SMILES and temperature columns.</p>
+<h3>Rows you might not want to redistribute</h3>
+<p>865 rows are sourced from DrugBank. The dataset itself is CC0, but we dropped those rows anyway to keep the licensing simple for anyone who builds on the result.</p>
+<h3>Unparsable structures</h3>
+<p>236 rows did not survive RDKit parsing and standardization.</p>
+<h3>Sources that disagree</h3>
+<p>After merging, 389 compounds have values from different sources that differ by more than 10 °C. Keep a record of them: they are often behind your worst errors.</p>
+<h3>A scaffold split that is harder than it looks</h3>
+<p>Scaffold groups in this set are very uneven. The biggest one is plain benzene (27% of compounds), and acyclic molecules, which all share the empty Bemis–Murcko scaffold, are another 15%. A scaffold split that sends the largest groups to train leaves the test set made of rarer ring systems, and those happen to melt higher on average: the scaffold test mean is 156.0 °C versus 102.8 °C for the random split. Keep that in mind before you read too much into a scaffold-split number.</p>
+<h2>How we cleaned it</h2>
+<ol>
+<li>Drop the "do not use" rows, the DrugBank-sourced rows and unparsable SMILES. That leaves 27,167 measurements.</li>
+<li>Standardize each structure with RDKit and group measurements by structure.</li>
+<li>Take the median melting point per structure and record how many values and sources it came from, plus the min–max range.</li>
+<li>Flag (not delete) compounds where sources disagree by more than 10 °C.</li>
+<li>Keep organic compounds. The final ML set is 19,530 compounds.</li>
+<li>Add three split columns at roughly 80/10/10: random, Bemis–Murcko scaffold, and a cluster split (Butina clustering on Morgan fingerprints).</li>
+</ol>
+<h2>Baseline numbers</h2>
+<p>Random Forest, 300 trees, test set, °C. All numbers come from the pack's <code>stats.json</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Split</th>
+<th>Features</th>
+<th>RMSE</th>
+<th>MAE</th>
+<th>R²</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>random</td>
+<td>RDKit descriptors</td>
+<td>40.4</td>
+<td>29.1</td>
+<td>0.805</td>
+</tr>
+<tr>
+<td>random</td>
+<td>Morgan 2048</td>
+<td>49.1</td>
+<td>35.4</td>
+<td>0.712</td>
+</tr>
+<tr>
+<td>cluster</td>
+<td>RDKit descriptors</td>
+<td>43.3</td>
+<td>32.8</td>
+<td>0.749</td>
+</tr>
+<tr>
+<td>cluster</td>
+<td>Morgan 2048</td>
+<td>54.9</td>
+<td>42.1</td>
+<td>0.598</td>
+</tr>
+<tr>
+<td>scaffold</td>
+<td>RDKit descriptors</td>
+<td>54.2</td>
+<td>41.0</td>
+<td>0.476</td>
+</tr>
+<tr>
+<td>scaffold</td>
+<td>Morgan 2048</td>
+<td>72.1</td>
+<td>53.9</td>
+<td>0.072</td>
+</tr>
+</tbody>
+</table>
+<p>Predicting the mean gives an RMSE of 91.4 (random), 86.8 (cluster) and 98.1 (scaffold).</p>
+<p>Two things stand out. Descriptors beat Morgan bits on every split here. And the Morgan model barely beats the mean on the scaffold split (R² 0.072), which tells you that fingerprint-based models are mostly matching substructures they have already seen. If you report only random-split results for a new model, check its performance on the cluster split as well.</p>
+<h2>Try it on the free preview</h2>
+<p>A 150-row sample with the same columns (including the three split columns) is on Hugging Face. 150 rows is far too small to benchmark on, but it is enough to check your pipeline end to end.</p>
+<pre><code class="language-python">import numpy as np, pandas as pd
+from rdkit import Chem
+from rdkit.Chem import Descriptors
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_absolute_error
+
+url = (&quot;https://huggingface.co/datasets/woongworks/melting-point-ml-ready-preview&quot;
+       &quot;/resolve/main/mp_ml_ready_sample_150.csv&quot;)
+df = pd.read_csv(url)
+
+def feats(smi):
+    m = Chem.MolFromSmiles(smi)
+    return [fn(m) for _, fn in Descriptors.descList]
+
+X = np.nan_to_num(np.array([feats(s) for s in df.smiles]), posinf=0, neginf=0)
+y = df.mp_C.values
+
+split = &quot;cluster_split&quot;          # try random_split / scaffold_split too
+tr, te = (df[split] == &quot;train&quot;).values, (df[split] == &quot;test&quot;).values
+rf = RandomForestRegressor(n_estimators=300, random_state=0).fit(X[tr], y[tr])
+print(&quot;MAE (deg C):&quot;, mean_absolute_error(y[te], rf.predict(X[te])))
+
+# look at the compounds where sources disagree
+print(df[df.disagreement_flag][[&quot;name&quot;, &quot;mp_C&quot;, &quot;range_C&quot;]].head())
+</code></pre>
+<h2>Limits</h2>
+<ul>
+<li>Values come from mixed sources and were not re-measured.</li>
+<li>Decomposition and sublimation notes are not modeled.</li>
+<li>Not validated against an independent external set.</li>
+</ul>
+<h2>Get the data</h2>
+<ul>
+<li>Free preview (150 rows): <a href="https://huggingface.co/datasets/woongworks/melting-point-ml-ready-preview">huggingface.co/datasets/woongworks/melting-point-ml-ready-preview</a></li>
+<li>Full pack ($7): all 19,530 compounds, a long-format file with every kept measurement and its source text, <code>stats.json</code>, and the <code>build.py</code> that rebuilds everything from the original figshare file: <a href="https://yoonge.gumroad.com/l/melting-point-ml-ready?utm_source=blog&amp;utm_medium=seo&amp;utm_campaign=melting-point-dataset">yoonge.gumroad.com/l/melting-point-ml-ready</a></li>
+</ul>
+<p>The pack is released under CC0 1.0, like the source. You are paying for the cleaning, splits, baselines and packaging; the original data stays free on figshare, and you can do all of the above yourself with the steps listed here. If you use it, please cite Bradley et al. (2014).</p>
+<p><em>If you need several property sets with the same split setup, the $29 <a href="https://yoonge.gumroad.com/l/ujkjzo?utm_source=blog&amp;utm_medium=seo&amp;utm_campaign=melting-point-dataset">Chemistry OOD Eval Suite</a> bundles 13 of them, melting point included.</em></p><h2>Related notes</h2><ul><li><a href="../flash-point-prediction-dataset/">A flash point prediction dataset you can actually train on</a></li><li><a href="../henrys-law-constant-dataset-machine-learning/">Henry&#x27;s law constant dataset for machine learning: cleaning Sander&#x27;s compilation</a></li><li><a href="../logp-dataset-smiles-download/">Where to download a logP dataset with SMILES (and what to check before you train on it)</a></li><li><a href="../scaffold-split-vs-random-split-chemistry/">Scaffold split vs random split in chemistry ML: the same model on 13 datasets</a></li><li><a href="../solubility-in-organic-solvents-dataset/">Solubility in organic solvents: an ML dataset and the limits of random splits</a></li></ul></article></main>
+<footer><p>Free 150-row previews: <a href="https://huggingface.co/woongworks">huggingface.co/woongworks</a> ·
+Full packs: <a href="https://yoonge.gumroad.com/?utm_source=blog&amp;utm_medium=seo&amp;utm_campaign=footer">yoonge.gumroad.com</a> ·
+Byungwoong Yoo (woongworks)</p></footer>
+</body></html>

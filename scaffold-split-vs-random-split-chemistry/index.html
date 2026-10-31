@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Scaffold split vs random split in chemistry ML: the same model on 13 datasets</title>
+<meta name="description" content="Why random splits flatter molecular property models, when a scaffold split is misleading too, and what a cluster split adds. Real baseline numbers from 13 open datasets.">
+<link rel="canonical" href="https://byungwoongyoo.github.io/chem-ml-datasets/scaffold-split-vs-random-split-chemistry/">
+<meta property="og:title" content="Scaffold split vs random split in chemistry ML: the same model on 13 datasets"><meta property="og:description" content="Why random splits flatter molecular property models, when a scaffold split is misleading too, and what a cluster split adds. Real baseline numbers from 13 open datasets.">
+<meta property="og:type" content="article"><meta property="og:url" content="https://byungwoongyoo.github.io/chem-ml-datasets/scaffold-split-vs-random-split-chemistry/">
+<link rel="stylesheet" href="../style.css">
+</head><body>
+<header><a href="../">ML-ready chemistry datasets: notes</a></header>
+<main><article><h1>Scaffold split vs random split in chemistry ML: the same model on 13 datasets</h1><p class=meta>2026-10-31</p><p>If you train a molecular property model and split your data randomly, you are mostly measuring how well the model recognises molecules that look like ones it has already seen. That is sometimes what you want. Usually it is not: in real use, the molecules you care about are new ones.</p>
+<p>The usual fix is a scaffold split. It is a good default, but it has its own failure mode that people rarely mention. We compare random, scaffold and cluster splits using the same simple model on 13 open experimental datasets to show how much the choice of split affects the results.</p>
+<h2>The three splits</h2>
+<h3>Random split</h3>
+<p>Shuffle compounds, cut 80/10/10. Close analogues (a methyl vs an ethyl ester, say) end up on both sides. The model can score well by interpolating between near-duplicates.</p>
+<h3>Scaffold split</h3>
+<p>Compute each molecule's Bemis–Murcko scaffold (ring systems plus the linkers between them, side chains removed), group by scaffold, and assign whole groups to train, validation or test. The common convention, used in MoleculeNet-style code, is to put the largest groups in train and the rare scaffolds in test. Now no ring system in test has been seen in training.</p>
+<h3>Cluster split</h3>
+<p>Cluster molecules by fingerprint similarity (we use Butina clustering on Morgan radius-2 fingerprints with a Tanimoto threshold of 0.4) and assign whole clusters. This separates compounds by overall similarity rather than by ring system alone.</p>
+<h2>What happens to the numbers</h2>
+<p>Same model everywhere: Random Forest on RDKit 2D descriptors, single seed, test-set R². These come from the <code>stats.json</code> of each of our packs (collected in one <code>BASELINES.csv</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Dataset</th>
+<th>Random</th>
+<th>Scaffold</th>
+<th>Cluster</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Melting point (19,530 cpds)</td>
+<td>0.805</td>
+<td>0.476</td>
+<td>0.749</td>
+</tr>
+<tr>
+<td>Sangster logP (23,512)</td>
+<td>0.848</td>
+<td>0.613</td>
+<td>0.722</td>
+</tr>
+<tr>
+<td>Flash point (8,470)</td>
+<td>0.799</td>
+<td>0.554</td>
+<td>0.816</td>
+</tr>
+<tr>
+<td>Henry's law constant (4,228)</td>
+<td>0.893</td>
+<td>0.444</td>
+<td>0.892</td>
+</tr>
+<tr>
+<td>Non-aqueous solubility (3,776 pairs)</td>
+<td>0.767</td>
+<td>0.261</td>
+<td>0.173</td>
+</tr>
+<tr>
+<td>Ionic liquid viscosity (1,771 ILs)</td>
+<td>0.632</td>
+<td>0.488</td>
+<td>0.096</td>
+</tr>
+<tr>
+<td>Surface tension</td>
+<td>0.871</td>
+<td>0.403</td>
+<td>0.913</td>
+</tr>
+<tr>
+<td>Vaporization enthalpy</td>
+<td>0.966</td>
+<td>0.828</td>
+<td>0.836</td>
+</tr>
+<tr>
+<td>MetalLipo logP (3,885 metal complexes)</td>
+<td>0.535</td>
+<td>0.282</td>
+<td>0.344</td>
+</tr>
+<tr>
+<td>MetalCytoTox pIC50 (8,524 complexes)</td>
+<td>0.569</td>
+<td>0.201</td>
+<td>0.456</td>
+</tr>
+<tr>
+<td>Ir(III) emission wavelength</td>
+<td>0.660</td>
+<td>0.389</td>
+<td>0.530</td>
+</tr>
+<tr>
+<td>AIE emission energy</td>
+<td>0.685</td>
+<td>0.209</td>
+<td>0.205</td>
+</tr>
+</tbody>
+</table>
+<p>(Abraham solute descriptors, the 13th set, has six targets; scaffold R² is below random R² for all six.)</p>
+<p>Every row drops from random to scaffold, often by a lot. Non-aqueous solubility goes from 0.767 to 0.261. Henry's law goes from 0.893 to 0.444. If you had only reported the random split, you would have overestimated how the model does on new chemistry.</p>
+<h2>The catch: scaffold splits can also mislead</h2>
+<p>For melting point, flash point, Henry's law and surface tension, the cluster and random splits give similar R² values; the scaffold split gives much lower values.</p>
+<p>Scaffold groups are very uneven, and the biggest ones are simple. Acyclic molecules all share the same scaffold, the empty one: about 40% of the flash point set and 57% of the Henry's law set. In the melting point set the largest group is plain benzene (27%), with acyclic compounds another 15%. A "largest groups go to train" scaffold split puts all of those in train, so the test set is made only of rarer ring systems. That shifts the target distribution:</p>
+<ul>
+<li>Melting point: test mean 156.0 °C on the scaffold split vs 102.8 °C on the random split.</li>
+<li>Flash point: 170.2 °C vs 106.7 °C.</li>
+<li>Henry's law (log10 units): train mean −2.06, test mean +1.84 on the scaffold split.</li>
+</ul>
+<p>Part of the drop in the scaffold-split score comes from the test set's different label distribution. That is a separate consideration from predicting unfamiliar chemistry. A cluster split does not have this artefact as strongly, which is why we report all three.</p>
+<p>The opposite also happens. For IL viscosity and AIE emission, the cluster split is the hardest. But their cluster test sets are small (50 and 28 compounds), so those numbers are noisy. Treat the result from one seed and 28 test compounds as preliminary.</p>
+<h2>Practical advice</h2>
+<ol>
+<li>Report at least two splits. Random alone tells you very little about generalisation.</li>
+<li>Check the target distribution per split. Print the mean and standard deviation of y for train and test. If they differ a lot, say so.</li>
+<li>Look at the size of the largest scaffold groups (often benzene and the empty acyclic scaffold) before trusting a scaffold split.</li>
+<li>Freeze your splits as columns in the data file. Recomputing the splits with a different RDKit version or random seed changes the results and prevents a direct comparison.</li>
+<li>Use more than one seed when test sets are small.</li>
+</ol>
+<h2>A scaffold split in a few lines</h2>
+<pre><code class="language-python">from collections import defaultdict
+import pandas as pd
+from rdkit import Chem
+from rdkit.Chem.Scaffolds import MurckoScaffold
+
+def scaffold_split(smiles, frac=(0.8, 0.1, 0.1)):
+    groups = defaultdict(list)
+    for i, s in enumerate(smiles):
+        m = Chem.MolFromSmiles(s)
+        groups[MurckoScaffold.MurckoScaffoldSmiles(mol=m)].append(i)
+    # largest scaffold groups first -&gt; train
+    ordered = sorted(groups.values(), key=len, reverse=True)
+    n, out = len(smiles), {}
+    cut1, cut2 = frac[0] * n, (frac[0] + frac[1]) * n
+    filled = 0
+    for idx in ordered:
+        part = &quot;train&quot; if filled + len(idx) &lt;= cut1 else (
+               &quot;valid&quot; if filled + len(idx) &lt;= cut2 else &quot;test&quot;)
+        for i in idx:
+            out[i] = part
+        filled += len(idx)
+    return [out[i] for i in range(n)]
+
+url = (&quot;https://huggingface.co/datasets/woongworks/melting-point-ml-ready-preview&quot;
+       &quot;/resolve/main/mp_ml_ready_sample_150.csv&quot;)
+df = pd.read_csv(url)
+df[&quot;my_scaffold_split&quot;] = scaffold_split(df.smiles.tolist())
+print(&quot;largest scaffold groups:&quot;, df.scaffold.fillna(&quot;&lt;acyclic&gt;&quot;).value_counts(normalize=True).head(3).round(3).to_dict())
+print(df.groupby(&quot;my_scaffold_split&quot;).mp_C.agg([&quot;count&quot;, &quot;mean&quot;]))
+print(df.groupby(&quot;random_split&quot;).mp_C.agg([&quot;count&quot;, &quot;mean&quot;]))
+</code></pre>
+<p>Run it and compare the per-split means. On a full dataset you will usually see the scaffold test mean drift away from the overall mean.</p>
+<h2>Data used here</h2>
+<p>All 13 datasets are cleaned versions of open sources (melting point is CC0 1.0 from Bradley et al.; the others are CC BY 4.0, each with its original authors cited in its README). Each has <code>random_split</code>, <code>scaffold_split</code> and <code>cluster_split</code> columns already in the file.</p>
+<ul>
+<li>Free 150-row previews of every set: <a href="https://huggingface.co/woongworks">huggingface.co/woongworks</a></li>
+<li>Chemistry OOD Eval Suite ($29): all 13 full datasets with frozen splits, <code>BASELINES.csv</code> with 108 baseline results, a <code>score.py</code> that grades your predictions against the baselines on any split, and <code>build.py</code> for every set: <a href="https://yoonge.gumroad.com/l/ujkjzo?utm_source=blog&amp;utm_medium=seo&amp;utm_campaign=scaffold-vs-random-split">yoonge.gumroad.com/l/ujkjzo</a></li>
+</ul>
+<p>Single packs are $7 each if you only need one property.</p><h2>Related notes</h2><ul><li><a href="../flash-point-prediction-dataset/">A flash point prediction dataset you can actually train on</a></li><li><a href="../henrys-law-constant-dataset-machine-learning/">Henry&#x27;s law constant dataset for machine learning: cleaning Sander&#x27;s compilation</a></li><li><a href="../logp-dataset-smiles-download/">Where to download a logP dataset with SMILES (and what to check before you train on it)</a></li><li><a href="../melting-point-dataset-for-machine-learning/">A melting point dataset for machine learning: what&#x27;s in the Bradley set and how to clean it</a></li><li><a href="../solubility-in-organic-solvents-dataset/">Solubility in organic solvents: an ML dataset and the limits of random splits</a></li></ul></article></main>
+<footer><p>Free 150-row previews: <a href="https://huggingface.co/woongworks">huggingface.co/woongworks</a> ·
+Full packs: <a href="https://yoonge.gumroad.com/?utm_source=blog&amp;utm_medium=seo&amp;utm_campaign=footer">yoonge.gumroad.com</a> ·
+Byungwoong Yoo (woongworks)</p></footer>
+</body></html>

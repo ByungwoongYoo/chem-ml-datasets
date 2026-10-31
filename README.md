@@ -1,0 +1,1 @@
+Notes on open experimental chemistry datasets for machine learning: where each dataset comes from, how we cleaned it, and baseline results on random, scaffold and cluster splits. The site is plain HTML built from Markdown and served with GitHub Pages at https://byungwoongyoo.github.io/chem-ml-datasets/.

@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Where to download a logP dataset with SMILES (and what to check before you train on it)</title>
+<meta name="description" content="An open octanol-water logP dataset with SMILES: the SangsterLogP source, logP vs logD confusion, ionisable compounds, and Random Forest baselines on three splits.">
+<link rel="canonical" href="https://byungwoongyoo.github.io/chem-ml-datasets/logp-dataset-smiles-download/">
+<meta property="og:title" content="Where to download a logP dataset with SMILES (and what to check before you train on it)"><meta property="og:description" content="An open octanol-water logP dataset with SMILES: the SangsterLogP source, logP vs logD confusion, ionisable compounds, and Random Forest baselines on three splits.">
+<meta property="og:type" content="article"><meta property="og:url" content="https://byungwoongyoo.github.io/chem-ml-datasets/logp-dataset-smiles-download/">
+<link rel="stylesheet" href="../style.css">
+</head><body>
+<header><a href="../">ML-ready chemistry datasets: notes</a></header>
+<main><article><h1>Where to download a logP dataset with SMILES (and what to check before you train on it)</h1><p class=meta>2026-10-31</p><p>For logP modelling, a CSV with SMILES and experimental octanol–water partition coefficients is a useful starting point, provided it contains enough reliable measurements to train on. In practice the first file you find is often not logP at all, or it mixes measured and predicted values.</p>
+<p>We use the open SangsterLogP dataset. Below, we describe the checks needed before training and report the baseline results.</p>
+<h2>First, make sure it is actually logP</h2>
+<p>A common mix-up: the "Lipophilicity" set in MoleculeNet is logD at pH 7.4, not logP. logD depends on ionisation at a given pH; logP describes the neutral species. For neutral compounds they are close; for acids and bases they can be far apart. If you train on logD and then use the model as a logP predictor (or the other way round), the errors on ionisable compounds will be systematic.</p>
+<p>The second mix-up is predicted values. Many "logP" columns in public tables are cLogP or XLogP outputs. A model trained on another model's predictions will learn that model, including its blind spots.</p>
+<h2>The source we use</h2>
+<p>Cirino T, Sangster J, Charochkina L, Tetko I. <em>SangsterLogP dataset</em>. Zenodo, doi:<a href="https://doi.org/10.5281/zenodo.19387552">10.5281/zenodo.19387552</a>. Data descriptor in <em>Scientific Data</em> (2026), doi:<a href="https://doi.org/10.1038/s41597-026-07357-2">10.1038/s41597-026-07357-2</a>. License: CC BY 4.0.</p>
+<p>It is a curated compilation of experimental octanol–water logP values for 23,520 entries, distributed as an Excel workbook. Besides logP it carries a separately reported "Lipophilicity" value, an ionisation-based class, the experimental method, pH and temperature where known, and a "Recommended" flag. The metadata helps you decide which rows to include.</p>
+<h2>Pitfalls in this data</h2>
+<h3>logP and Lipophilicity are not always the same number</h3>
+<p>For about 94% of rows they match. The 1,343 rows where they differ are mostly in ionisation class M. If you want a clean neutral-species target, look at <code>ion_class</code> and <code>logP_lip_delta</code> before training.</p>
+<h3>Only some rows are "Recommended"</h3>
+<p>7,964 compounds carry the source's Recommended = yes flag. Training on all 23,512 is fine for a broad model, but it is worth checking whether your error drops on the recommended subset; if it does not, the noise is probably not where you think.</p>
+<h3>Method and pH are sparse</h3>
+<p>Shake-flask, HPLC and other methods are all in there, but many rows have no method or pH recorded. You can filter on <code>exp_method</code> when it is present; you cannot recover it when it is not.</p>
+<h3>Large molecules</h3>
+<p>284 compounds are in a class labelled "NC (&gt;700Da)". If your use case is small-molecule drug-like chemistry, you may want to drop them.</p>
+<h3>Spreadsheet details</h3>
+<p>The workbook has several sheets (the main set, a Huuskonen set and a prospective set). Use the main sheet, and drop the 8 rows with non-numeric logP values.</p>
+<h2>How we cleaned it</h2>
+<ol>
+<li>Read the main sheet, drop the 8 non-numeric logP rows: 23,512 left.</li>
+<li>Standardize SMILES with RDKit (largest fragment, uncharged, canonical). All 23,512 parsed.</li>
+<li>Merge by canonical SMILES (median); no duplicates remained after merging, and no compound needed a disagreement flag.</li>
+<li>Keep the source metadata columns (<code>ion_class</code>, <code>recommended</code>, <code>exp_method</code>, <code>pH_num</code>, <code>bRo5</code>, and so on) so you can filter.</li>
+<li>Add three split columns at about 80/10/10: random, Bemis–Murcko scaffold, and Butina clusters (Morgan radius 2, Tanimoto ≥ 0.4).</li>
+</ol>
+<h2>Baselines</h2>
+<p>Random Forest, 300 trees, test set, logP units. From the pack's <code>stats.json</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Split</th>
+<th>Features</th>
+<th>RMSE</th>
+<th>MAE</th>
+<th>R²</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>random</td>
+<td>RDKit descriptors</td>
+<td>0.656</td>
+<td>0.467</td>
+<td>0.848</td>
+</tr>
+<tr>
+<td>random</td>
+<td>Morgan 2048</td>
+<td>0.841</td>
+<td>0.615</td>
+<td>0.750</td>
+</tr>
+<tr>
+<td>scaffold</td>
+<td>RDKit descriptors</td>
+<td>0.919</td>
+<td>0.686</td>
+<td>0.613</td>
+</tr>
+<tr>
+<td>scaffold</td>
+<td>Morgan 2048</td>
+<td>1.164</td>
+<td>0.882</td>
+<td>0.379</td>
+</tr>
+<tr>
+<td>cluster</td>
+<td>RDKit descriptors</td>
+<td>0.895</td>
+<td>0.645</td>
+<td>0.722</td>
+</tr>
+<tr>
+<td>cluster</td>
+<td>Morgan 2048</td>
+<td>1.169</td>
+<td>0.895</td>
+<td>0.526</td>
+</tr>
+</tbody>
+</table>
+<p>Predicting the mean gives RMSE 1.681 / 1.566 / 1.713 (random / scaffold / cluster). Note that RDKit's descriptor list includes Crippen MolLogP, so the descriptor model starts with a decent logP estimate as one of its inputs. That is fine for a baseline, but keep it in mind if you compare against a pure graph model.</p>
+<h2>Load the free preview</h2>
+<pre><code class="language-python">import pandas as pd
+from rdkit import Chem
+from rdkit.Chem import Crippen
+
+url = (&quot;https://huggingface.co/datasets/woongworks/sangster-logp-ml-ready-preview&quot;
+       &quot;/resolve/main/sangster_logp_preview_150.csv&quot;)
+df = pd.read_csv(url)
+
+# keep rows where logP and the reported lipophilicity agree
+neutral = df[df.logP_lip_delta.abs() &lt; 1e-6]
+print(len(df), &quot;rows,&quot;, len(neutral), &quot;with logP == lipophilicity&quot;)
+print(df.ion_class.value_counts())
+
+# how far off is plain Crippen logP on these rows?
+neutral = neutral.assign(
+    crippen=[Crippen.MolLogP(Chem.MolFromSmiles(s)) for s in neutral.smiles])
+err = (neutral.crippen - neutral.logP).abs()
+print(&quot;Crippen MAE vs experimental:&quot;, round(err.mean(), 3))
+</code></pre>
+<p>That last check is a good habit: if your trained model does not clearly beat Crippen on the cluster split, it has not learned much.</p>
+<h2>Metal complexes are a different problem</h2>
+<p>Organic logP models do badly on coordination compounds. If that is your area, we also packaged MetalLipoDB (Krasnov et al., Zenodo doi:<a href="https://doi.org/10.5281/zenodo.23084573">10.5281/zenodo.23084573</a>, CC BY 4.0): shake-flask logP for 3,885 metal complexes. For these complexes, the same Random Forest with RDKit descriptors reaches R² 0.535 on a random split and 0.282 on a scaffold split. Free preview: <a href="https://huggingface.co/datasets/woongworks/metallipo-logp-ml-ready-preview">metallipo-logp-ml-ready-preview</a>.</p>
+<h2>Get the data</h2>
+<ul>
+<li>Free preview (150 rows, same columns): <a href="https://huggingface.co/datasets/woongworks/sangster-logp-ml-ready-preview">huggingface.co/datasets/woongworks/sangster-logp-ml-ready-preview</a></li>
+<li>Full pack ($7): all 23,512 compounds, the long-format source table, <code>stats.json</code> and <code>build.py</code>: <a href="https://yoonge.gumroad.com/l/sangster-logp-ml-ready?utm_source=blog&amp;utm_medium=seo&amp;utm_campaign=logp-dataset">yoonge.gumroad.com/l/sangster-logp-ml-ready</a></li>
+</ul>
+<p>The pack is CC BY 4.0 like the source. The original data stays openly available on Zenodo; you pay for the cleaning, splits, baselines and packaging. Please cite Cirino et al. if you use it.</p><h2>Related notes</h2><ul><li><a href="../flash-point-prediction-dataset/">A flash point prediction dataset you can actually train on</a></li><li><a href="../henrys-law-constant-dataset-machine-learning/">Henry&#x27;s law constant dataset for machine learning: cleaning Sander&#x27;s compilation</a></li><li><a href="../melting-point-dataset-for-machine-learning/">A melting point dataset for machine learning: what&#x27;s in the Bradley set and how to clean it</a></li><li><a href="../scaffold-split-vs-random-split-chemistry/">Scaffold split vs random split in chemistry ML: the same model on 13 datasets</a></li><li><a href="../solubility-in-organic-solvents-dataset/">Solubility in organic solvents: an ML dataset and the limits of random splits</a></li></ul></article></main>
+<footer><p>Free 150-row previews: <a href="https://huggingface.co/woongworks">huggingface.co/woongworks</a> ·
+Full packs: <a href="https://yoonge.gumroad.com/?utm_source=blog&amp;utm_medium=seo&amp;utm_campaign=footer">yoonge.gumroad.com</a> ·
+Byungwoong Yoo (woongworks)</p></footer>
+</body></html>

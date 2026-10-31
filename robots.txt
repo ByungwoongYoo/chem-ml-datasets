@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://byungwoongyoo.github.io/chem-ml-datasets/sitemap.xml

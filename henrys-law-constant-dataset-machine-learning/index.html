@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Henry&#x27;s law constant dataset for machine learning: cleaning Sander&#x27;s compilation</title>
+<meta name="description" content="How to turn Sander&#x27;s Henry&#x27;s law compilation (v5.0.0) into an ML-ready table: unit conventions, estimated vs measured values, structure mapping, and baseline errors on three splits.">
+<link rel="canonical" href="https://byungwoongyoo.github.io/chem-ml-datasets/henrys-law-constant-dataset-machine-learning/">
+<meta property="og:title" content="Henry&#x27;s law constant dataset for machine learning: cleaning Sander&#x27;s compilation"><meta property="og:description" content="How to turn Sander&#x27;s Henry&#x27;s law compilation (v5.0.0) into an ML-ready table: unit conventions, estimated vs measured values, structure mapping, and baseline errors on three splits.">
+<meta property="og:type" content="article"><meta property="og:url" content="https://byungwoongyoo.github.io/chem-ml-datasets/henrys-law-constant-dataset-machine-learning/">
+<link rel="stylesheet" href="../style.css">
+</head><body>
+<header><a href="../">ML-ready chemistry datasets: notes</a></header>
+<main><article><h1>Henry&#x27;s law constant dataset for machine learning: cleaning Sander&#x27;s compilation</h1><p class=meta>2026-10-31</p><p>For a QSPR or ML model of Henry's law constants in water, we would start with Rolf Sander's compilation. It is huge, carefully referenced and openly licensed. It is also a reference work, built for looking values up rather than for training models. Turning the compilation into a clean <code>smiles, y</code> table requires structure mapping, filtering by value type and checking unit conventions.</p>
+<p>We describe those steps and report the baseline results.</p>
+<h2>The source</h2>
+<p>R. Sander, <em>Compilation of Henry's law constants (version 5.0.0) for water as solvent</em>, Atmos. Chem. Phys. 23, 10901–12440 (2023), doi:<a href="https://doi.org/10.5194/acp-23-10901-2023">10.5194/acp-23-10901-2023</a>. The data is downloadable from <a href="https://www.henrys-law.org">henrys-law.org</a>. The article is distributed under CC BY 4.0, and the full data table is in its appendix.</p>
+<p>The database we parsed has 46,434 values from 995 publications, for organic and inorganic species.</p>
+<h2>Pitfalls</h2>
+<h3>Unit conventions</h3>
+<p>Henry's law constants are reported in many forms: solubility constants (concentration in water over partial pressure) and volatility constants (the inverse), with or without dimensions. Sander standardizes to a solubility constant Hscp in mol m⁻³ Pa⁻¹. If you merge in values from anywhere else, check which convention they use; mixing a constant with its inverse flips the sign of the log and destroys the model.</p>
+<h3>Not every value is a measurement</h3>
+<p>Each value in the compilation has a type code. Some are experimental or derived from experimental data, some are cited second-hand, and some are QSPR predictions (Q) or estimates (E). There are also values of unknown origin (?) and values the compiler marks as wrong (W). Training on QSPR outputs means learning someone else's model. We kept only the experimental-type codes (M, V, T, R, L, C, X) and dropped Q, E, ? and W. That left 13,709 of 46,434 values.</p>
+<h3>No SMILES in the source</h3>
+<p>Species are identified by name, CAS and InChIKey. We mapped InChIKeys to structures using PubChem and the EPA OPERA QSAR-ready set. We mapped 13,591 of the retained values to molecular structures.</p>
+<h3>Temperature</h3>
+<p>The ML target is the value at 298.15 K. The temperature-dependence term is kept in the long file but not modeled.</p>
+<h3>Huge dynamic range</h3>
+<p>In log10 units the targets run from −9.1 to 15.69, with a standard deviation of 3.35. The wide target range makes it easier to obtain a high R². Check RMSE as well.</p>
+<h3>Disagreement</h3>
+<p>For 185 compounds, the reported values disagree by more than one log unit (standard deviation &gt; 1). We flag them rather than drop them.</p>
+<h3>The scaffold split is a different question</h3>
+<p>57% of compounds are acyclic (small volatile molecules) and share the empty Bemis–Murcko scaffold. In a scaffold split they all land in train. The scaffold test set then has a very different target mean: train −2.06, test +1.84 in log10 units. That makes it a hard extrapolation test rather than a fair "new chemistry" test. Use the cluster split for that.</p>
+<h2>How we cleaned it</h2>
+<ol>
+<li>Parse all 46,434 values from the SQL release.</li>
+<li>Keep experimental-type values (M, V, T, R, L, C, X): 13,709.</li>
+<li>Convert to log10 Hscp at 298.15 K, map InChIKeys to structures, keep the largest fragment.</li>
+<li>Merge duplicates per structure by median, recording the number of values, number of references and standard deviation.</li>
+<li>Keep organic compounds with at least 2 heavy atoms: 4,228 compounds. (A separate file keeps 4,296 species including inorganics.)</li>
+<li>Add random, scaffold and cluster (Butina, Morgan r2, Tanimoto distance 0.6) splits.</li>
+</ol>
+<h2>Baselines</h2>
+<p>Random Forest, 500 trees, test set, log10 units. From <code>stats.json</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Split</th>
+<th>Features</th>
+<th>RMSE</th>
+<th>MAE</th>
+<th>R²</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>random</td>
+<td>RDKit descriptors</td>
+<td>1.117</td>
+<td>0.540</td>
+<td>0.893</td>
+</tr>
+<tr>
+<td>random</td>
+<td>Morgan 2048</td>
+<td>1.347</td>
+<td>0.738</td>
+<td>0.844</td>
+</tr>
+<tr>
+<td>cluster</td>
+<td>RDKit descriptors</td>
+<td>1.028</td>
+<td>0.584</td>
+<td>0.892</td>
+</tr>
+<tr>
+<td>cluster</td>
+<td>Morgan 2048</td>
+<td>1.670</td>
+<td>0.960</td>
+<td>0.714</td>
+</tr>
+<tr>
+<td>scaffold</td>
+<td>RDKit descriptors</td>
+<td>2.443</td>
+<td>1.835</td>
+<td>0.444</td>
+</tr>
+<tr>
+<td>scaffold</td>
+<td>Morgan 2048</td>
+<td>3.552</td>
+<td>2.719</td>
+<td>−0.176</td>
+</tr>
+</tbody>
+</table>
+<p>Predict-the-mean RMSE: 3.412 (random), 3.177 (cluster), 5.092 (scaffold).</p>
+<p>An MAE of around half a log unit on the random and cluster splits corresponds to a factor of about three in the constant itself. That may be acceptable for some environmental fate applications; check whether it is adequate for the chemical class and quantitative task you have in mind.</p>
+<h2>Quick look with the free preview</h2>
+<pre><code class="language-python">import numpy as np, pandas as pd
+from rdkit import Chem
+from rdkit.Chem import Descriptors
+from sklearn.ensemble import RandomForestRegressor
+
+url = (&quot;https://huggingface.co/datasets/woongworks/henry-law-ml-ready-preview&quot;
+       &quot;/resolve/main/henry_ml_ready_sample_150.csv&quot;)
+df = pd.read_csv(url)
+
+# which value types does each compound rest on? (codes are concatenated, e.g. &quot;M&quot;, &quot;VX&quot;)
+print(df.htypes.value_counts().head())
+
+# compare target distributions across splits before modelling
+for split in [&quot;random_split&quot;, &quot;scaffold_split&quot;, &quot;cluster_split&quot;]:
+    print(split, df.groupby(split).log10_Hscp_298K.mean().round(2).to_dict())
+
+X = np.nan_to_num(np.array([[fn(Chem.MolFromSmiles(s)) for _, fn in Descriptors.descList]
+                            for s in df.smiles]), posinf=0, neginf=0)
+tr = (df.cluster_split == &quot;train&quot;).values
+rf = RandomForestRegressor(n_estimators=500, random_state=0)
+rf.fit(X[tr], df.log10_Hscp_298K[tr])
+</code></pre>
+<p>The per-split means are worth printing every time. On the full set, the scaffold split's shift shows up immediately.</p>
+<h2>Limits</h2>
+<ul>
+<li>Values come from 995 publications of mixed quality; some value types are cited second-hand.</li>
+<li>Only 298.15 K values are used as the target.</li>
+<li>Not checked against an independent set of new measurements.</li>
+</ul>
+<h2>Get the data</h2>
+<ul>
+<li>Free preview (150 rows): <a href="https://huggingface.co/datasets/woongworks/henry-law-ml-ready-preview">huggingface.co/datasets/woongworks/henry-law-ml-ready-preview</a></li>
+<li>Full pack ($7): 4,228 organics, the long file with every experimental value and its Sander reference key, the all-species file, <code>stats.json</code> and <code>build.py</code>: <a href="https://yoonge.gumroad.com/l/henry-law-ml-ready?utm_source=blog&amp;utm_medium=seo&amp;utm_campaign=henry-law-dataset">yoonge.gumroad.com/l/henry-law-ml-ready</a></li>
+</ul>
+<p>The pack is CC BY 4.0. Please cite Sander (2023). The compilation remains freely available at henrys-law.org. The pack adds structure mapping, filtering, splits and baselines.</p><h2>Related notes</h2><ul><li><a href="../flash-point-prediction-dataset/">A flash point prediction dataset you can actually train on</a></li><li><a href="../logp-dataset-smiles-download/">Where to download a logP dataset with SMILES (and what to check before you train on it)</a></li><li><a href="../melting-point-dataset-for-machine-learning/">A melting point dataset for machine learning: what&#x27;s in the Bradley set and how to clean it</a></li><li><a href="../scaffold-split-vs-random-split-chemistry/">Scaffold split vs random split in chemistry ML: the same model on 13 datasets</a></li><li><a href="../solubility-in-organic-solvents-dataset/">Solubility in organic solvents: an ML dataset and the limits of random splits</a></li></ul></article></main>
+<footer><p>Free 150-row previews: <a href="https://huggingface.co/woongworks">huggingface.co/woongworks</a> ·
+Full packs: <a href="https://yoonge.gumroad.com/?utm_source=blog&amp;utm_medium=seo&amp;utm_campaign=footer">yoonge.gumroad.com</a> ·
+Byungwoong Yoo (woongworks)</p></footer>
+</body></html>
