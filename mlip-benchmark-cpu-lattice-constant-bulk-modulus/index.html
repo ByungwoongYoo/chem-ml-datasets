@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Five machine-learned interatomic potentials on CPU: lattice constants and bulk moduli vs experiment</title>
+<meta name="description" content="CHGNet-r2SCAN, PET-MAD-s, Prophet, MACE-MP-0 and FlashCart fitted to an equation of state on 70 solids, compared with corrected experimental data. Errors, failures and CPU time on 2 cores.">
+<link rel="canonical" href="https://byungwoongyoo.github.io/chem-ml-datasets/mlip-benchmark-cpu-lattice-constant-bulk-modulus/">
+<meta property="og:title" content="Five machine-learned interatomic potentials on CPU: lattice constants and bulk moduli vs experiment"><meta property="og:description" content="CHGNet-r2SCAN, PET-MAD-s, Prophet, MACE-MP-0 and FlashCart fitted to an equation of state on 70 solids, compared with corrected experimental data. Errors, failures and CPU time on 2 cores.">
+<meta property="og:type" content="article"><meta property="og:url" content="https://byungwoongyoo.github.io/chem-ml-datasets/mlip-benchmark-cpu-lattice-constant-bulk-modulus/">
+<link rel="stylesheet" href="../style.css">
+</head><body>
+<header><a href="../">ML-ready chemistry datasets: notes</a></header>
+<main><article><h1>Five machine-learned interatomic potentials on CPU: lattice constants and bulk moduli vs experiment</h1><p class=meta>2026-11-02</p><p>Universal machine-learned interatomic potentials (MLIPs) are now the first thing many people reach for before DFT. Most published comparisons score them against DFT labels. DFT-reference tests measure agreement with a chosen functional. Here we compare with experimental estimates corrected to the static-lattice limit.</p>
+<p>The test is small: equation-of-state fits on 70 solids near their experimental structures, compared with experimental lattice constants and bulk moduli, on 2 CPU cores. Code, per-solid results and charts are in <a href="https://github.com/ByungwoongYoo/mlip-cpu-bench-2026">github.com/ByungwoongYoo/mlip-cpu-bench-2026</a>.</p>
+<h2>Reference data</h2>
+<p>Raw room-temperature lattice constants are not the right target. Thermal expansion and zero-point motion both shift them, so a perfect static-lattice model would still look wrong. We used two sources that correct for both:</p>
+<ul>
+<li>TSB16 (Tran, Stelzl and Blaha, J. Chem. Phys. 144, 204120, 2016): 44 cubic solids, metals, semiconductors and ionic crystals.</li>
+<li>LEJ14 (Lejaeghere et al., Crit. Rev. Solid State Mater. Sci. 39, 1, 2014): 26 more elements, with corrected volumes, bulk moduli and the paper's crystal structures.</li>
+</ul>
+<p>These two are not independent: TSB16 reuses LEJ14's corrections for elements. The zero-point corrections are model-based, and experimental bulk moduli carry several per cent of uncertainty on their own.</p>
+<h2>The protocol</h2>
+<p>For each solid and model we computed energies at 11 volumes over ±6 % around the reference volume. Cells with free shape or internal coordinates (23 of the 70) got a constant-volume, symmetry-preserving relaxation at each volume: ASE's BFGS optimiser with a symmetry constraint, a force/stress threshold of 0.005 eV/Å and at most 300 steps. We then fitted a third-order Birch–Murnaghan equation of state. If the fitted minimum was more than 3 % from the centre, the grid was recentred and refitted, at most three times.</p>
+<p>A fit counts as failed if the minimum lies outside the sampled range, the bulk modulus comes out non-positive, an energy is not finite, or the model raises an error. We report completion counts over all 70 solids. Accuracy averages use only the 62 solids completed by every model; failures receive no numerical penalty in those averages. Every failure is listed below.</p>
+<p>A relaxation that hits 300 steps stays in the fit with a warning in the result file. We do not count it as a failure. In the final runs this happened only with CHGNet-r2SCAN: 10 volume points spread over Hf, Lu, Tc, Y and Zr, whose fits we kept, and 6 on boron, which failed anyway. The other four models converged at every relaxed point.</p>
+<p>Everything ran one model at a time on 2 pinned cores with 2 threads and float64 where the model supports it. We did not specify or optimise magnetic order, so this benchmark does not test recovery of the correct magnetic states of Fe, Co, Ni or Cr.</p>
+<p>The equation of state gives only a volume. It does not give the full set of cell parameters. So "a" in the tables is the volume-equivalent lattice constant: its error is 100 × [(V/V_ref)^(1/3) − 1] with volumes per atom. For the non-cubic solids this can hide errors in axis ratios and angles, which we did not score. The parity plot below uses the conventional lattice constant of the cubic solids only.</p>
+<h2>Results</h2>
+<p>To compare the models on the same solids, the headline uses the 62 solids that all five fitted successfully.</p>
+<table>
+<thead>
+<tr>
+<th>Model</th>
+<th>ok / 70</th>
+<th>MAPE a (%)</th>
+<th>MAPE B (%)</th>
+<th>ME a (%)</th>
+<th>ME B (%)</th>
+<th>wall, 62 solids (s)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CHGNet-r2SCAN-2026.9</td>
+<td>66</td>
+<td>0.69</td>
+<td>23.6</td>
+<td>+0.24</td>
+<td>+11.7</td>
+<td>469</td>
+</tr>
+<tr>
+<td>PET-MAD-s</td>
+<td>68</td>
+<td>0.80</td>
+<td>15.3</td>
+<td>+0.49</td>
+<td>−12.3</td>
+<td>211</td>
+</tr>
+<tr>
+<td>Prophet-OAME-MBD</td>
+<td>69</td>
+<td>1.15</td>
+<td>20.9</td>
+<td>+1.05</td>
+<td>−10.2</td>
+<td>2189</td>
+</tr>
+<tr>
+<td>MACE-MP-0 medium</td>
+<td>69</td>
+<td>1.21</td>
+<td>15.8</td>
+<td>+1.04</td>
+<td>−6.6</td>
+<td>211</td>
+</tr>
+<tr>
+<td>FlashCart-MAD</td>
+<td>67</td>
+<td>1.55</td>
+<td>38.6</td>
+<td>−1.33</td>
+<td>+32.1</td>
+<td>1375</td>
+</tr>
+</tbody>
+</table>
+<p>MAPE is the mean absolute percentage error, and ME is the mean signed error (positive means the model overestimates). All columns use the 62 common solids. The wall times are observed workflow runtimes (see the CPU cost section).</p>
+<p><img alt="MAPE by model and material class" src="../assets/mlip-benchmark-cpu-lattice-constant-bulk-modulus/mape_by_model_class.png" /></p>
+<p>A few things stand out.</p>
+<p>On the 62 common successful cases, the reported MAPE ranges from 0.69% to 1.55%. CHGNet-r2SCAN has the lowest observed value at 0.69 %, with PET-MAD-s at 0.80 %. MACE-MP-0 and Prophet overestimate the volume-equivalent lattice constant by about 1 % on average (+1.04 % and +1.05 %). FlashCart goes the other way, at −1.33 %. We did not test why.</p>
+<p>Bulk moduli have larger errors. The lowest observed MAPE is 15.3 % (PET-MAD-s), with MACE-MP-0 at 15.8 %. A 0.5-point gap on 62 solids is not enough to call a stable winner. Percentage errors on B are inflated by the soft alkali and alkaline-earth metals: K, Rb, Cs and Ba have reference bulk moduli between 2.3 and 10.6 GPa, so a small absolute miss becomes a huge percentage. FlashCart's 38.6 % is pulled up by K (+499 %) and Rb (+489 %).</p>
+<p>Class averages can hide single solids. CHGNet-r2SCAN has a semimetal B error of about 159 %, but that class has only two solids in the common set, Bi and Sb, and Sb alone is off by +201 %. MgO is the only oxide in the set, so there is no oxide average at all.</p>
+<p><img alt="Parity plot of lattice constants for cubic solids" src="../assets/mlip-benchmark-cpu-lattice-constant-bulk-modulus/parity_a_cubic.png" /></p>
+<h2>Failures</h2>
+<p>Every model failed somewhere:</p>
+<ul>
+<li>CHGNet-r2SCAN: B, Cs, Ga, Po</li>
+<li>PET-MAD-s: As, Zn</li>
+<li>Prophet: Po</li>
+<li>MACE-MP-0: Po</li>
+<li>FlashCart: Ba, Cs, Fe</li>
+</ul>
+<p>The Po failures of CHGNet-r2SCAN, Prophet and MACE are not fit failures: each model raised an element lookup error on polonium (atomic number 84) before any energy was computed. Two more are runtime errors: CHGNet-r2SCAN on Ga stopped with "SVD did not converge", and FlashCart on Cs raised a PyTorch RuntimeError on an empty tensor. The rest failed the fit checks: the energy minimum fell outside the sampled range (CHGNet on Cs, PET-MAD-s on As, FlashCart on Ba), the bulk modulus came out non-positive (PET-MAD-s on Zn), or both (CHGNet on B, FlashCart on Fe). If your chemistry includes a specific element, check that the model covers it before you trust a batch run.</p>
+<p>Successful fits also differ in quality. The median RMS residual of the Birch–Murnaghan fit on the common set is below 0.15 meV/atom for every model. Prophet has one large outlier, Co at 19.75 meV/atom, so its Co result is less reliable than the rest. Per-solid residuals, recentring passes and convergence flags are in the result JSON files.</p>
+<h2>CPU cost</h2>
+<p><img alt="Accuracy vs CPU time" src="../assets/mlip-benchmark-cpu-lattice-constant-bulk-modulus/cost_vs_accuracy.png" /></p>
+<p>PET-MAD-s and MACE-MP-0 each finished the 62 common solids in 211 s on 2 cores. CHGNet-r2SCAN took 469 s, FlashCart 1,375 s and Prophet 2,189 s. These totals include the constant-volume relaxations of non-cubic cells, so they also depend on how many relaxation steps each model needs.</p>
+<p>Prophet did not finish as one job. Its sequential run was killed by the 3,000 MB memory watchdog on boron, so the remaining solids ran one per process. The boron retry used a 3,500 MB limit and peaked at 3,381 MB.</p>
+<p>These are observed workflow runtimes; shared-host contention and different model-loading policies prevent a controlled speed comparison. For example, Prophet's per-solid jobs each loaded the model again.</p>
+<h2>Limitations</h2>
+<ul>
+<li>This is a local check of the equation of state around the experimental structure and reference volume. It does not show how the models do on new structures, other chemistries or large screening runs.</li>
+<li>Magnetic order was not set or optimised (see above).</li>
+<li>The common set is mostly cubic and mostly metals (38 metals, 16 semiconductors, 6 ionic solids, 2 semimetals).</li>
+<li>Static lattice only, so no phonons and no finite temperature.</li>
+<li>One checkpoint per model, selected explicitly: CHGNet-PES-MatPES-r2SCAN-1M-2026.9 (matgl 4.1.3), PET-MAD-s v1.6.0, MACE-MP-0 medium (2023-12-03; the <code>mace_mp</code> default in mace-torch 0.3.17 is a different model), Prophet-OAME-MBD and the FlashCart MAD seed-0 checkpoint. The README lists revisions and file hashes. We did not check whether fixes listed in the matgl changelog change the CHGNet-r2SCAN results.</li>
+</ul>
+<h2>Takeaway</h2>
+<p>In this local test, CHGNet-r2SCAN had the lowest observed error on the volume-equivalent a and PET-MAD-s the lowest on B, with MACE-MP-0 close behind on B. PET-MAD-s was second on a. These gaps come from one small, mostly cubic set, so use them to decide which models to test on your own systems. They do not make a ranking. Before using model weights or model-generated outputs commercially, check the checkpoint-specific licences in the repo. The licence of the CHGNet-r2SCAN-2026.9 weights is unknown: its model card states none.</p>
+<h2>Reproduce it</h2>
+<p>The repo has the protocol script, the job wrapper with the memory watchdog, a script that downloads the reference data and checks its checksums, all per-solid results and the aggregation code. Rebuilding the tables and charts from the shipped results takes one command, and the README lists the package versions used for each model.</p><h2>Related notes</h2><ul><li><a href="../flash-point-prediction-dataset/">A flash point prediction dataset you can actually train on</a></li><li><a href="../henrys-law-constant-dataset-machine-learning/">Henry&#x27;s law constant dataset for machine learning: cleaning Sander&#x27;s compilation</a></li><li><a href="../logp-dataset-smiles-download/">Where to download a logP dataset with SMILES (and what to check before you train on it)</a></li><li><a href="../melting-point-dataset-for-machine-learning/">A melting point dataset for machine learning: what&#x27;s in the Bradley set and how to clean it</a></li><li><a href="../scaffold-split-vs-random-split-chemistry/">Scaffold split vs random split in chemistry ML: the same model on 13 datasets</a></li><li><a href="../solubility-in-organic-solvents-dataset/">Solubility in organic solvents: an ML dataset and the limits of random splits</a></li><li><a href="../tabular-foundation-models-vs-xgboost-small-data/">Tabular foundation models vs XGBoost on small data: a CPU learning-curve test</a></li></ul></article></main>
+<footer><p>Free 150-row previews: <a href="https://huggingface.co/woongworks">huggingface.co/woongworks</a> ·
+Full packs: <a href="https://yoonge.gumroad.com/?utm_source=blog&amp;utm_medium=seo&amp;utm_campaign=footer">yoonge.gumroad.com</a> ·
+Byungwoong Yoo (woongworks)</p></footer>
+</body></html>
