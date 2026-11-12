@@ -20,6 +20,8 @@ Put the pack folders under `packs/` next to the script.
 
 `SPLIT` is optional. It defaults to `scaffold_split`. You can also write `random`, `scaffold` or `cluster`.
 
+Each prediction column must contain one finite number for every labelled row in the chosen test split. With `row_index`, labelled test rows can appear in any order and must occur exactly once. The scorer warns and skips indexed rows outside that set.
+
 ## 1. Multiple prediction columns (e.g. one per training seed)
 
 Every column whose name starts with `pred` gets its own score. With two or more columns, the script also prints mean ± sd across them. Each line is compared with the 5-seed RF baseline mean ± sd:
