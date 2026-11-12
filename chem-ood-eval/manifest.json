@@ -1,0 +1,107 @@
+{
+"henry": [
+"2026-10-26-r2/henry",
+"henry_ml_ready_v0.csv",
+[
+"log10_Hscp_298K"
+]
+],
+"melting_point": [
+"2026-10-27-r2/mp",
+"mp_ml_ready_v0.csv",
+[
+"mp_C"
+]
+],
+"ons_nonaq_solubility": [
+"2026-10-28-r1/ons-solubility",
+"ons_nonaq_solubility_ml_ready_v0.csv",
+[
+"logS_M"
+]
+],
+"irlum_lambda": [
+"2026-10-28-r10/irlum",
+"irlum_lambda_ml_ready_v0.csv",
+[
+"lambda_nm"
+]
+],
+"metalcytotox_pic50": [
+"2026-10-28-r11/metalcytotox",
+"metalcytotox_pic50_ml_ready_v0.csv",
+[
+"pIC50_dark"
+]
+],
+"flashpoint": [
+"2026-10-28-r2/flashpoint",
+"flashpoint_ml_ready_v0.csv",
+[
+"fp_C"
+]
+],
+"abraham": [
+"2026-10-28-r3/abraham",
+"abraham_ml_ready_v0.csv",
+[
+"E",
+"S",
+"A",
+"B",
+"V",
+"L"
+]
+],
+"sangster_logp": [
+"2026-10-28-r4/sangster-logp",
+"sangster_logp_ml_ready_v0.csv",
+[
+"logP"
+]
+],
+"dvap": [
+"2026-10-28-r5/dvap",
+"dvap_ml_ready_v0.csv",
+[
+"dvap_kJmol"
+]
+],
+"surface_tension": [
+"2026-10-28-r6/st",
+"st_ml_ready_v0.csv",
+[
+"sigma_mNm_near298"
+]
+],
+"il_viscosity": [
+"2026-10-28-r7/ilvisc",
+"il_viscosity_ml_ready_v0.csv",
+[
+"log10_viscosity_near298"
+]
+],
+"aie_emission": [
+"2026-10-28-r8/aie",
+"aie_emission_ml_ready_v0.csv",
+[
+"emission_energy_eV"
+]
+],
+"metallipo_logp": [
+"2026-10-28-r9/metallipo",
+"metallipo_logp_ml_ready_v0.csv",
+[
+"logP"
+]
+],
+"chromophore_optical": [
+"2026-10-31-pack/chromophore-optical",
+"chromophore_optical_ml_ready_v0.csv",
+[
+"abs_max_nm",
+"emi_max_nm",
+"quantum_yield"
+]
+]
+}
