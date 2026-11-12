@@ -13,6 +13,7 @@ Usage:
     Every column whose name starts with `pred` is scored (e.g. `pred`, or
     `pred_seed0 ... pred_seed4` for several training seeds); with 2+ columns the
     mean +- sd across columns is printed too.
+    Each prediction column needs one finite value per labelled test row.
   --diagnose: label diagnostics for the chosen split (no predictions needed).
 Baselines come from BASELINES_5seed.csv (5 RF seeds, mean +- sd) if present,
 otherwise BASELINES.csv (single seed). Needs only Python 3 (no numpy)."""
@@ -122,28 +123,62 @@ if diagnose:
     print()
 
 # ---- scoring ----------------------------------------------------------------
-P = list(csv.DictReader(open(pred_path, newline="")))
+with open(pred_path, newline="") as predictions_file:
+    reader = csv.DictReader(predictions_file)
+    columns = reader.fieldnames or []
+    pcols = [c for c in columns if c and c.strip().lower().startswith("pred")]
+    if columns.count("row_index") > 1:
+        die(f"{pred_path}: duplicate row_index column")
+    if len(pcols) != len(set(pcols)):
+        die(f"{pred_path}: duplicate prediction column name")
+    P = list(reader)
 if not P: die(f"{pred_path} has no rows")
-pcols = [c for c in P[0] if c and c.strip().lower().startswith("pred")]
 if not pcols: die(f"{pred_path}: no prediction column (need a column named `pred` or starting with `pred`)")
 yby = {i: float(r[tcol]) for i, r in test}
-if "row_index" in P[0]:
-    keys = [int(p["row_index"]) for p in P]
-    unk = [k for k in keys if k not in yby]
-    if unk: print(f"  warning: {len(unk)} row_index values are not labelled {split} test rows; ignored")
+if "row_index" in columns:
+    predictions_by_row = {}
+    ignored = 0
+    for record_number, prediction in enumerate(P, start=1):
+        raw_index = prediction["row_index"]
+        try:
+            row_index = int(raw_index)
+        except (TypeError, ValueError):
+            die(f"{pred_path}: invalid row_index {raw_index!r} in prediction record {record_number}; expected an integer")
+        if row_index not in yby:
+            ignored += 1
+            continue
+        if row_index in predictions_by_row:
+            die(f"{pred_path}: duplicate row_index {row_index} for a labelled {split} test row")
+        predictions_by_row[row_index] = prediction
+    missing = [row_index for row_index in yby if row_index not in predictions_by_row]
+    if missing:
+        examples = ", ".join(str(row_index) for row_index in missing[:5])
+        die(f"{pred_path}: missing predictions for {len(missing)} labelled {split} test rows (row_index: {examples})")
+    if ignored:
+        print(f"  warning: {ignored} row_index values are not labelled {split} test rows; ignored")
 else:
     if len(P) != len(test): die(f"{pred_path} has {len(P)} rows but {pack} {split} has {len(test)} labelled test rows; add row_index or fix the order")
-    keys = [i for i, _ in test]
-print(f"{pack} {split} target={tcol} ({len(test)} labelled test rows)")
+    predictions_by_row = dict(zip(yby, P))
+
+y = list(yby.values())
 res = []
 for c in pcols:
-    y, yh = [], []
-    for k, p in zip(keys, P):
-        v = fnum(p.get(c))
-        if k in yby and v is not None: y.append(yby[k]); yh.append(v)
-    if len(y) < 2: print(f"  {c}: fewer than 2 usable predictions, skipped"); continue
-    m = metrics(y, yh); res.append(m)
-    print(f"  yours [{c}] n={len(y)}: R2={m['R2']:.3f} RMSE={m['RMSE']:.4g} MAE={m['MAE']:.4g}")
+    yh = []
+    for row_index in yby:
+        value = fnum(predictions_by_row[row_index].get(c))
+        if value is None:
+            die(f"{pred_path}: expected a finite prediction in column {c!r} for row_index {row_index}")
+        yh.append(value)
+    if len(y) >= 2:
+        res.append(metrics(y, yh))
+
+print(f"{pack} {split} target={tcol} ({len(test)} labelled test rows)")
+if res:
+    for c, m in zip(pcols, res):
+        print(f"  yours [{c}] n={len(y)}: R2={m['R2']:.3f} RMSE={m['RMSE']:.4g} MAE={m['MAE']:.4g}")
+else:
+    for c in pcols:
+        print(f"  {c}: fewer than 2 usable predictions, skipped")
 if len(res) > 1:
     print(f"  yours mean +- sd over {len(res)} columns: " + "  ".join(
         f"{k}={mean([r[k] for r in res]):.3f} +- {sd([r[k] for r in res]):.3f}" for k in ("R2", "RMSE", "MAE")))
